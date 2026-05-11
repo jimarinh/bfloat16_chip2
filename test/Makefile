@@ -6,7 +6,9 @@ SIM ?= icarus
 FST ?= -fst # Use more efficient FST format
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
-PROJECT_SOURCES = project.v
+PROJECT_SOURCES = fp16_sum_res.v fpmul.v sum_res_pp.v add_renorm.v exp_mant_logic.v \
+		leading_zero_norm.v myreg.v op_sign_logic.v rounder.v \
+        bfloat16_chip_tiny.v tt_um_bfloat16.v
 
 ifneq ($(GATES),yes)
 
