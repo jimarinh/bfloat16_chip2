@@ -14,7 +14,6 @@ reg resetACC;
 reg loadACC;
 reg loadPISO;
 wire [15:0] sipo_reg; 
-wire [15:0] piso_reg;
 wire [15:0] regA;
 wire [15:0] regB;
 wire [15:0] acc;

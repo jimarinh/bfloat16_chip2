@@ -7,7 +7,7 @@ module rounder(
     );
 
 wire [8:0] mant_adder_output;
-wire [7:0] mant_shift_output;
+wire [8:0] mant_shift_output;
 reg [8:0] mant_rounded;
 
 wire [7:0] exp_adder_output;
@@ -16,7 +16,7 @@ wire [7:0] exp_adder_output;
 assign mant_shift_output={1'b0,mant_i[10:3]};
 
 // Round adder
-assign mant_adder_output ={1'b0,mant_i[10:3]}+9'd1;
+assign mant_adder_output =mant_shift_output+9'd1;
 
       
 
@@ -29,8 +29,6 @@ case(mant_i[2:0])
 3'b001:
  mant_rounded= mant_shift_output;
 3'b010:
- mant_rounded= mant_shift_output;
-3'b011:
  mant_rounded= mant_shift_output;
 3'b011:
  mant_rounded= mant_shift_output;
