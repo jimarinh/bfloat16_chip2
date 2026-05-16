@@ -37,6 +37,7 @@ wire [15:0] out_mpy;
 //SPI Interface
 //----------------------------
 spi_controller u_spi (
+    .clk(clk),
     .reset(rst),
     .sclk(SCLK),
     .ss(SS),
@@ -284,15 +285,16 @@ always @(*) begin
 
         LoadOut: begin
             loadACC = 1'b0;
-            loadPISO = 1'b1; 
-            if (!ready_sipo) 
-                next_state = WaitData1;
-            else if (SS)
+            loadPISO = 1'b1;
+            if (SS)
                 next_state = Idle;
+            else if (!ready_sipo) 
+                next_state = WaitData1;
         end
 
         WaitNextData2: begin
             loadA = 1'b0;
+            loadPISO = 1'b1;
             if (!ready_sipo) 
                 next_state = WaitData2;
             else if (SS)
@@ -356,6 +358,7 @@ endmodule
 module spi_controller #(
     parameter WIDTH = 16
 )(
+    input  clk,        // Master clock
     input  reset,
     input  sclk,       // SPI clock
     input  ss,         // Slave Select (active low)
@@ -368,27 +371,25 @@ module spi_controller #(
     output ready         // Set when a word is complete 
 );
 
+wire clk_counter;
 
 spi_bit_counter #(.WIDTH(WIDTH)) u_bit_counter(
-    .sclk(sclk),
+    .sclk(!clk_counter),
     .ss(ss),
     .ready(ready) 
 );
 
-spi_sipo #(.WIDTH(WIDTH)) u_sipo(
-    .sclk(sclk),
-    .ss(ss),
-    .mosi(mosi),
-    .data_out(data_rx)
-);
-
-spi_piso #(.WIDTH(WIDTH)) u_piso(
+spi_piso_sipo #(.WIDTH(WIDTH)) u_piso_sipo(
+    .clk(clk),
     .reset(reset),
     .sclk(sclk),
     .ss(ss),
     .miso(miso),
+    .mosi(mosi),
     .load(load_tx),
-    .data_in(data_tx)
+    .data_in(data_tx),
+    .data_out(data_rx),
+    .clk_out(clk_counter)
 );
 
 endmodule
@@ -430,66 +431,88 @@ end
 endmodule
 
 //------------------------------------------------------
-//Serial-Input Parallel Output (SIPO) Register
+// Parallel-Input Serial-Output(PISO) and 
+//   Serial-Input Parallel-Output(SIPO) Register
 // for the SPI interface
 // MSB-first, SS is active low
 // SCLK low on idle, data sampled on positive edge SCLK  
 //------------------------------------------------------
 
-module spi_sipo #(
+module spi_piso_sipo #(
     parameter WIDTH = 16
 )(
-    input  sclk,       // SPI clock
-    input  mosi,       // Serial data input
-    input  ss,         // Slave Select (active low)
-    output reg [WIDTH-1:0] data_out   // Output shift register
-);
-
-// Shift register
-always @(posedge sclk) begin
-    if (!ss) begin
-        // Shift MSB first
-        data_out <= { data_out[WIDTH-2:0], mosi };
-    end
-end
-
-endmodule
-
-
-//------------------------------------------------------
-//Parallel Input Serial-Output (PISO) Register
-// for the SPI interface
-// MSB-first, SS is active low
-// SCLK low on idle, data sampled on positive edge SCLK  
-//------------------------------------------------------
-
-module spi_piso #(
-    parameter WIDTH = 16
-)(
+    input  clk,
     input  reset,
     input  sclk,       // SPI clock
     output miso,       // Serial data output
+    input  mosi,       // Serial data input
     input  ss,         // Slave Select (active low)
     input  load,       // Load PISO (active high)
-    input [WIDTH-1:0] data_in   // Data to be transmitted
+    input  [WIDTH-1:0] data_in,   // Data to be transmitted
+    output [WIDTH-1:0] data_out,  // Output shift register
+    output clk_out     // Output clock to drive the bit counter
 );
 
-// Shift register
-reg [WIDTH-1:0] shift_reg;
-assign miso = shift_reg[WIDTH-1];
-wire tclk = ss | sclk;
+reg [WIDTH-1:0] shift_reg;  // Shift register
+reg [1:0] state_sipo;       // FSM for shift register. 
+reg [1:0] next_sipo_state;  // Shifts are always in rising edge of SCLK and Loads in falling edges of SCLK
+reg en_shift;   //Internal signals to control when shift and load 
+reg en_load;
+reg miso_t;
 
-always @(negedge tclk or posedge reset) begin
-    if (reset) begin
-        shift_reg <= {WIDTH{1'b0}};
-    end else if (load) begin
-        shift_reg <= data_in;
+// Update state for SIPO/PISO register
+always @(posedge clk) begin
+    if (reset) begin 
+        state_sipo <= 2'b00;
     end else begin
-        // Shift MSB first
-        if (!ss) begin
-            shift_reg <= { shift_reg[WIDTH-2:0], 1'b0 };
-        end
+        state_sipo <= next_sipo_state;
     end
 end
+
+// Update next state for SIPO/PISO register
+always @(*) begin
+    next_sipo_state  = state_sipo;
+    en_shift = 1'b0;
+    en_load  = 1'b0;
+    case (state_sipo)
+        2'b00: begin
+            if (!ss & sclk) next_sipo_state = 2'b01;
+            end
+        2'b01: begin
+            en_shift = 1'b1;
+            next_sipo_state = 2'b10;
+            end
+        2'b10: begin
+            if (!sclk) next_sipo_state = 2'b11;
+        end
+        2'b11: begin
+            en_load = 1'b1;
+            next_sipo_state = 2'b00;
+            end
+    endcase
+end
+
+// Update shift register
+always @(posedge clk) begin
+    if (reset)  
+        shift_reg <= {WIDTH{1'b0}};
+    else if (en_load & load) 
+        shift_reg <= data_in;
+    else if (en_shift) // Shift MSB first
+        shift_reg <= { shift_reg[WIDTH-2:0], mosi };
+end
+
+//assign miso = shift_reg[WIDTH-1];
+assign data_out = shift_reg;
+assign clk_out = en_shift;
+
+always @(negedge en_load or posedge reset) begin
+    if (reset)
+        miso_t <= 1'b0;
+    else
+        miso_t <= shift_reg[WIDTH-1];
+end
+
+assign miso = miso_t;
 
 endmodule

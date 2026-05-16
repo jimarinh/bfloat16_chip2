@@ -182,7 +182,7 @@ async def test_project(dut):
     assert rx2 == 0x0000, (f"ERROR rx2: expected=0x0000 received=0x{rx2:04X}")
     assert rx3 == 0x0000, (f"ERROR rx3: expected=0x0000 received=0x{rx3:04X}")
     assert rx4 == 0x40C0, (f"ERROR rx4: expected=0x40C0 received=0x{rx4:04X}")
-    assert rx5 == 0x0000, (f"ERROR rx5: expected=0x0000 received=0x{rx5:04X}")
+    assert rx5 == 0x40C0, (f"ERROR rx5: expected=0x0000 received=0x{rx5:04X}")
     assert rx6 == 0x40BA, (f"ERROR rx6: expected=0x40BA received=0x{rx6:04X}")
 
     dut._log.info("All SPI tests completed")
