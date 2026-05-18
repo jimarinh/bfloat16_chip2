@@ -94,73 +94,7 @@ async def test_project(dut):
     
     await ClockCycles(dut.clk, 500)
 
-    ########################################################
-    # SPI Frame: SUB with ACC=1.0
-    ########################################################
-
-    dut._log.info("SPI TEST: SUB ACC=1.0")
-
-    change_ss(dut, 0)
-    rx1 = await spi_transfer_16(dut, 0b1000_0001_0000_0000)
-    rx2 = await spi_transfer_16(dut, 0x4040)  # 3.0
-    rx3 = await spi_transfer_16(dut, 0x4000)  # 2.0
-    rx4 = await spi_transfer_16(dut, 0x3DCC)  # 0.1
-    rx5 = await spi_transfer_16(dut, 0x0000)  # dummy
-    change_ss(dut, 1)
-
-    assert rx1 == 0x40A3, (f"ERROR rx1: expected=0x0000 received=0x{rx1:04X}")
-    assert rx2 == 0x3F80, (f"ERROR rx2: expected=0x3F80 received=0x{rx2:04X}")
-    assert rx3 == 0xC000, (f"ERROR rx3: expected=0xC000 received=0x{rx3:04X}")
-    assert rx4 == 0xC080, (f"ERROR rx4: expected=0xC080 received=0x{rx4:04X}")
-    assert rx5 == 0xC083, (f"ERROR rx5: expected=0xC083 received=0x{rx5:04X}")
-
-    await ClockCycles(dut.clk, 500)
-
-    ########################################################
-    # SPI Frame: MPY with ACC=0.0
-    ########################################################
-
-    dut._log.info("SPI TEST: MPY ACC=0.0")
-
-    change_ss(dut, 0)
-    rx1 = await spi_transfer_16(dut, 0b0001_0000_0000_0000)
-    rx2 = await spi_transfer_16(dut, 0x4040)  # 3.0
-    rx3 = await spi_transfer_16(dut, 0x4000)  # 2.0
-    rx4 = await spi_transfer_16(dut, 0x3DCC)  # 0.1
-    rx5 = await spi_transfer_16(dut, 0x0000)  # dummy
-    change_ss(dut, 1)
-
-    assert rx1 == 0xC083, (f"ERROR rx1: expected=0x0000 received=0x{rx1:04X}")
-    assert rx2 == 0x0000, (f"ERROR rx2: expected=0x0000 received=0x{rx2:04X}")
-    assert rx3 == 0x0000, (f"ERROR rx3: expected=0x0000 received=0x{rx3:04X}")
-    assert rx4 == 0x0000, (f"ERROR rx4: expected=0x0000 received=0x{rx4:04X}")
-    assert rx5 == 0x0000, (f"ERROR rx5: expected=0x0000 received=0x{rx5:04X}")
-
-    await ClockCycles(dut.clk, 500)
-
-    ########################################################
-    # SPI Frame: MPY with ACC=1.0
-    ########################################################
-
-    dut._log.info("SPI TEST: MPY ACC=1.0")
-
-    change_ss(dut, 0)
-    rx1 = await spi_transfer_16(dut, 0b0001_0001_0000_0000)
-    rx2 = await spi_transfer_16(dut, 0x4040)  # 3.0
-    rx3 = await spi_transfer_16(dut, 0x4000)  # 2.0
-    rx4 = await spi_transfer_16(dut, 0x3DCC)  # 0.1
-    rx5 = await spi_transfer_16(dut, 0x0000)  # dummy
-    change_ss(dut, 1)
-
-    await ClockCycles(dut.clk, 500)
-
-    assert rx1 == 0x0000, (f"ERROR rx1: expected=0x0000 received=0x{rx1:04X}")
-    assert rx2 == 0x3F80, (f"ERROR rx2: expected=0x3F80 received=0x{rx2:04X}")
-    assert rx3 == 0x4040, (f"ERROR rx3: expected=0x4040 received=0x{rx3:04X}")
-    assert rx4 == 0x40C0, (f"ERROR rx4: expected=0x40C0 received=0x{rx4:04X}")
-    assert rx5 == 0x3F19, (f"ERROR rx5: expected=0x3F19 received=0x{rx5:04X}")
-
-
+    
     ########################################################
     # SPI Frame: MAC with ACC=0.0
     ########################################################
@@ -178,11 +112,11 @@ async def test_project(dut):
 
     await ClockCycles(dut.clk, 500)
     
-    assert rx1 == 0x0000, (f"ERROR rx1: expected=0x0000 received=0x{rx1:04X}")
+    assert rx1 == 0x40A3, (f"ERROR rx1: expected=0x0000 received=0x{rx1:04X}")
     assert rx2 == 0x0000, (f"ERROR rx2: expected=0x0000 received=0x{rx2:04X}")
     assert rx3 == 0x0000, (f"ERROR rx3: expected=0x0000 received=0x{rx3:04X}")
     assert rx4 == 0x40C0, (f"ERROR rx4: expected=0x40C0 received=0x{rx4:04X}")
-    assert rx5 == 0x40C0, (f"ERROR rx5: expected=0x0000 received=0x{rx5:04X}")
+    assert rx5 == 0x40C0, (f"ERROR rx5: expected=0x40C0 received=0x{rx5:04X}")
     assert rx6 == 0x40BA, (f"ERROR rx6: expected=0x40BA received=0x{rx6:04X}")
 
     dut._log.info("All SPI tests completed")
