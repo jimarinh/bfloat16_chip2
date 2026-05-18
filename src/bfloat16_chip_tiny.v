@@ -25,8 +25,11 @@ wire ready_mpy;
 wire ready_op;
 
 wire is_sub;
+wire is_sum;
+wire is_mpy;
 wire is_mac;
 wire acc_init0;
+wire acc_init1;
 
 wire [15:0] out_addsub;
 wire [15:0] out_mpy;
@@ -54,11 +57,13 @@ spi_controller u_spi (
 //Bits 15-12:
 // 0000: SUM  
 // 1000: SUB 
-// 0001: MAC 
-// 1001: MAS 
+// 0001: MPY
+// 0011: MAC 
+// 1011: MAS 
 //Bts 9-8:
 // 00: ZERO: Load ACC with 0.0 
-// 11: Don't change ACC 
+// 01: ONE: Load ACC with 1.0 
+// 1X: Don't change ACC 
 
 wire load_op = ready_sipo & loadOP;
 
@@ -70,12 +75,17 @@ register #(.N(1)) u_regOP_sub(
     .q(is_sub)
 );
 
-register #(.N(1)) u_regOP_sum(
+wire [1:0] op_t;
+assign is_sum = op_t == 2'b00;
+assign is_mpy = op_t == 2'b01;
+assign is_mac = op_t == 2'b11;
+
+register #(.N(2)) u_regOP_sum(
     .clk(clk),
     .rst(rst),
     .load(load_op),
-    .d( sipo_reg[12] ),
-    .q(is_mac)
+    .d( sipo_reg[13:12] ),
+    .q(op_t)
 );
 
 register #(.N(1)) u_regOP_acc_init0(
@@ -84,6 +94,14 @@ register #(.N(1)) u_regOP_acc_init0(
     .load(load_op),
     .d( sipo_reg[9:8] == 2'b00 ),
     .q( acc_init0 )
+);
+
+register #(.N(1)) u_regOP_acc_init1(
+    .clk(clk),
+    .rst(rst),
+    .load(load_op),
+    .d( sipo_reg[9:8] == 2'b01 ),
+    .q( acc_init1 )
 );
 
 assign ready_op = (ready_addsub & en_addsub) | (ready_mpy & en_mpy);
@@ -111,9 +129,15 @@ register u_regB(
 wire [15:0] acc_in;
 wire [15:0] acc_in0;
 
-assign acc_in0 = out_addsub;
+assign acc_in0 =  
+    (is_sum|is_mac) ? out_addsub :
+    is_mpy ? out_mpy :
+    16'hx;
 
-assign acc_in = resetACC ? 16'h0000 : acc_in0;
+assign acc_in = 
+    resetACC ? 
+        (acc_init1 ? 16'h3F80 : 16'h0000) :
+        acc_in0;
 
 register u_acc(
     .clk(clk),
@@ -207,7 +231,7 @@ always @(*) begin
         ResetACC: begin
             loadOP = 1'b0;
             resetACC = 1'b1;
-            loadACC = acc_init0;
+            loadACC = acc_init0 | acc_init1;
             next_state = WaitNextData1;
         end
 
@@ -235,8 +259,8 @@ always @(*) begin
 
         WaitComp: begin
             loadA = 1'b0;
-            en_addsub = 1'b1;
-            en_mpy = 1'b0;
+            en_addsub = is_sum | is_mac;
+            en_mpy = is_mpy;
             if (ready_op)
                 next_state = LoadAcc;
         end
