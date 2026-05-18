@@ -9,7 +9,6 @@ module bfloat16_chip(
 
 reg loadA;
 reg loadB;
-reg loadOP;
 reg resetACC;
 reg loadACC;
 reg loadPISO;
@@ -23,10 +22,6 @@ wire ready_sipo;
 wire ready_addsub;
 wire ready_mpy;
 wire ready_op;
-
-wire is_sub;
-wire is_mac;
-wire acc_init0;
 
 wire [15:0] out_addsub;
 wire [15:0] out_mpy;
@@ -46,45 +41,6 @@ spi_controller u_spi (
     .ready(ready_sipo) // Set when a word is complete 
 );
 
-//Operation register 
-//----------------------------
-
-//Instruction decoding
-//----------------------------
-//Bits 15-12:
-// 0000: SUM  
-// 1000: SUB 
-// 0001: MAC 
-// 1001: MAS 
-//Bts 9-8:
-// 00: ZERO: Load ACC with 0.0 
-// 11: Don't change ACC 
-
-wire load_op = ready_sipo & loadOP;
-
-register #(.N(1)) u_regOP_sub(
-    .clk(clk),
-    .rst(rst),
-    .load(load_op),
-    .d(sipo_reg[15]),
-    .q(is_sub)
-);
-
-register #(.N(1)) u_regOP_sum(
-    .clk(clk),
-    .rst(rst),
-    .load(load_op),
-    .d( sipo_reg[12] ),
-    .q(is_mac)
-);
-
-register #(.N(1)) u_regOP_acc_init0(
-    .clk(clk),
-    .rst(rst),
-    .load(load_op),
-    .d( sipo_reg[9:8] == 2'b00 ),
-    .q( acc_init0 )
-);
 
 assign ready_op = (ready_addsub & en_addsub) | (ready_mpy & en_mpy);
 
@@ -109,11 +65,8 @@ register u_regB(
 //Accumulator 
 //----------------------------
 wire [15:0] acc_in;
-wire [15:0] acc_in0;
 
-assign acc_in0 = out_addsub;
-
-assign acc_in = resetACC ? 16'h0000 : acc_in0;
+assign acc_in = resetACC ? 16'h0000 : out_addsub;
 
 register u_acc(
     .clk(clk),
@@ -128,10 +81,10 @@ register u_acc(
 fp16sum_res u_addsub(
     .clk(clk),
     .rst(rst),
-    .add_sub(is_sub),
+    .add_sub(1'b0),
     .en(en_addsub),
     .x1(acc),
-    .x2( is_mac ? out_mpy : regA ),
+    .x2( out_mpy),
     .y(out_addsub),
     .ready(ready_addsub)
 );
@@ -143,7 +96,7 @@ fpmul u_mpy(
     .rst(rst),
     .en(en_mpy),
     .x1(regA),
-    .x2(is_mac ? regB : acc),
+    .x2(regB),
     .y(out_mpy),
     .ready(ready_mpy)
 );
@@ -152,21 +105,18 @@ fpmul u_mpy(
 //----------------------------
 
 // Machine states
-localparam Idle         = 4'd0; //Idle
-localparam WaitOp       = 4'd1; //Wait SPI reception of operation
-localparam ResetACC     = 4'd2; //Reset ACC if required
-localparam WaitNextData1= 4'd3; //Wait for SPI ready signal to be disabled
-localparam WaitData1    = 4'd4; //Wait SPI reception of first operand
-localparam WaitComp     = 4'd5; //Wait until main computation is done
-localparam LoadAcc      = 4'd6; //Load accumulator with final result
-localparam LoadOut      = 4'd7; //Load SPI output register
-localparam WaitNextData2= 4'd8; //Wait for SPI ready signal to be disabled
-localparam WaitData2    = 4'd9; //Wait SPI reception of second operand for MAC
-localparam WaitMPY      = 4'hA; //Wait until multiplication is done
+localparam Idle         = 3'd0; //Idle
+localparam WaitNextData1= 3'd1; //Wait for SPI ready signal to be disabled
+localparam WaitData1    = 3'd2; //Wait SPI reception of first operand
+localparam WaitComp     = 3'd3; //Wait until main computation is done
+localparam LoadAcc      = 3'd4; //Load accumulator with final result
+localparam WaitNextData2= 3'd5; //Wait for SPI ready signal to be disabled
+localparam WaitData2    = 3'd6; //Wait SPI reception of second operand for MAC
+localparam WaitMPY      = 3'h7; //Wait until multiplication is done
 
 // State register
-reg [3:0] state;
-reg [3:0] next_state;
+reg [2:0] state;
+reg [2:0] next_state;
 
 //Update state
 always @(posedge clk) begin
@@ -182,7 +132,6 @@ always @(*) begin
 
     loadA = 1'b0;
     loadB  = 1'b0;
-    loadOP = 1'b0;
     resetACC = 1'b0;
     loadACC = 1'b0;
     loadPISO = 1'b0;
@@ -192,23 +141,9 @@ always @(*) begin
     case (state)
         Idle: begin
             loadPISO = 1'b1;
-            if (!SS) 
-                next_state = WaitOp;
-        end
-
-        WaitOp: begin
-            loadOP = 1'b1;
-            if (ready_sipo) 
-                next_state = ResetACC;
-            else if (SS)
-                next_state = Idle; 
-        end
-
-        ResetACC: begin
-            loadOP = 1'b0;
             resetACC = 1'b1;
-            loadACC = acc_init0;
-            next_state = WaitNextData1;
+            if (!SS) 
+                next_state = WaitNextData1;
         end
 
         WaitNextData1: begin
@@ -223,12 +158,8 @@ always @(*) begin
         WaitData1: begin
             loadA = 1'b1;
             loadPISO = 1'b0;
-            if (ready_sipo) begin 
-                if (is_mac) 
-                    next_state = WaitNextData2;
-                else
-                    next_state = WaitComp;
-            end
+            if (ready_sipo) 
+                next_state = WaitNextData2;
             else if (SS)
                 next_state = Idle; 
         end
@@ -245,16 +176,7 @@ always @(*) begin
             en_addsub = 1'b0;
             en_mpy = 1'b0;
             loadACC = 1'b1;
-            next_state = LoadOut;
-        end
-
-        LoadOut: begin
-            loadACC = 1'b0;
-            loadPISO = 1'b1;
-            if (SS)
-                next_state = Idle;
-            else if (!ready_sipo) 
-                next_state = WaitData1;
+            next_state = WaitNextData1;
         end
 
         WaitNextData2: begin
