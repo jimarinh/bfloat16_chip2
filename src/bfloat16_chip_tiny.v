@@ -75,28 +75,17 @@ register #(.N(1)) u_regOP_sub(
     .q(is_sub)
 );
 
-register #(.N(1)) u_regOP_sum(
-    .clk(clk),
-    .rst(rst),
-    .load(load_op),
-    .d( sipo_reg[13:12] == 2'b00 ),
-    .q(is_sum)
-);
+wire [1:0] op_t;
+assign is_sum = op_t == 2'b00;
+assign is_mpy = op_t == 2'b01;
+assign is_mac = op_t == 2'b11;
 
-register #(.N(1)) u_regOP_mpy(
+register #(.N(2)) u_regOP_sum(
     .clk(clk),
     .rst(rst),
     .load(load_op),
-    .d( sipo_reg[13:12] == 2'b01 ),
-    .q(is_mpy)
-);
-
-register #(.N(1)) u_regOP_mac(
-    .clk(clk),
-    .rst(rst),
-    .load(load_op),
-    .d( sipo_reg[13:12] == 2'b11 ),
-    .q(is_mac)
+    .d( sipo_reg[13:12] ),
+    .q(op_t)
 );
 
 register #(.N(1)) u_regOP_acc_init0(
